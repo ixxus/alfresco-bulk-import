@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007-2015 Peter Monks.
+ * Copyright (C) 2007 Peter Monks
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,8 +28,10 @@ import java.util.Map;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+
 import org.alfresco.repo.content.ContentStore;
 import org.alfresco.util.Pair;
+
 import org.alfresco.extension.bulkimport.BulkImportCallback;
 import org.alfresco.extension.bulkimport.source.AbstractBulkImportSource;
 import org.alfresco.extension.bulkimport.source.BulkImportSourceStatus;
@@ -62,11 +64,12 @@ public final class FilesystemBulkImportSource
     
     private File sourceDirectory = null;
     
-    public FilesystemBulkImportSource(final DirectoryAnalyser  directoryAnalyser,
-                                      final ContentStore       configuredContentStore,
-                                      final List<ImportFilter> importFilters)
+    public FilesystemBulkImportSource(final BulkImportSourceStatus importStatus,
+                                      final DirectoryAnalyser      directoryAnalyser,
+                                      final ContentStore           configuredContentStore,
+                                      final List<ImportFilter>     importFilters)
     {
-        super(IMPORT_SOURCE_NAME, IMPORT_SOURCE_DESCRIPTION, IMPORT_SOURCE_CONFIG_UI_URI, null);
+        super(importStatus, IMPORT_SOURCE_NAME, IMPORT_SOURCE_DESCRIPTION, IMPORT_SOURCE_CONFIG_UI_URI, null);
         
         // PRECONDITIONS
         assert directoryAnalyser      != null : "directoryAnalyser must not be null.";
@@ -89,8 +92,8 @@ public final class FilesystemBulkImportSource
         
         if (sourceDirectory != null)
         {
-            result = new HashMap<String, String>();
-            result.put("Source directory", sourceDirectory.getAbsolutePath());
+            result = new HashMap<>();
+            result.put("Source Directory", sourceDirectory.getAbsolutePath());
         }
         
         return(result);
@@ -160,7 +163,7 @@ public final class FilesystemBulkImportSource
 
 
     /**
-     * @see org.alfresco.extension.bulkimport.source.BulkImportSource#scanFiles(java.util.Map, org.alfresco.extension.bulkimport.source.BulkImportSourceStatus, org.alfresco.extension.bulkimport.BulkImportCallback)
+     * @see org.alfresco.extension.bulkimport.source.BulkImportSource#scanFiles(BulkImportSourceStatus, BulkImportCallback)
      */
     @Override
     public void scanFiles(BulkImportSourceStatus status, BulkImportCallback callback)
@@ -200,6 +203,8 @@ public final class FilesystemBulkImportSource
             {
                 for (final FilesystemBulkImportItem directoryItem : directoryItems)
                 {
+                    if (importStatus.isStopping() || Thread.currentThread().isInterrupted()) throw new InterruptedException(Thread.currentThread().getName() + " was interrupted. Terminating early.");
+                    
                     if (!filter(directoryItem))
                     {
                         callback.submit(directoryItem);
@@ -211,6 +216,8 @@ public final class FilesystemBulkImportSource
             {
                 for (final FilesystemBulkImportItem fileItem : fileItems)
                 {
+                    if (importStatus.isStopping() || Thread.currentThread().isInterrupted()) throw new InterruptedException(Thread.currentThread().getName() + " was interrupted. Terminating early.");
+                    
                     if (!filter(fileItem))
                     {
                         callback.submit(fileItem);
@@ -227,6 +234,8 @@ public final class FilesystemBulkImportSource
                 
                 for (final FilesystemBulkImportItem directoryItem : directoryItems)
                 {
+                    if (importStatus.isStopping() || Thread.currentThread().isInterrupted()) throw new InterruptedException(Thread.currentThread().getName() + " was interrupted. Terminating early.");
+                    
                     if (!filter(directoryItem))
                     {
                         final FilesystemBulkImportItemVersion lastVersion = directoryItem.getVersions().last();   // Directories shouldn't have versions, but grab the last one (which will have the directory file pointer) just in case...

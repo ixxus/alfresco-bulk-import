@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007-2015 Peter Monks.
+ * Copyright (C) 2007 Peter Monks
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,7 +35,6 @@ public interface BatchImporter
     /**
      * A method that will import a single batch of <code>BulkImportItem</code>s.
      * 
-     * @param scanner               The scanner instance for this import (used for retries) <i>(must not be null)</i>.
      * @param userId                The userId with which to run the import <i>(must not be null, empty or blank, and must be a valid Alfresco userId)</i>.
      * @param target                The nodeRef of the target space in which to perform the import <i>(must not be null, and the target space must exist and be writeable)</i>.
      * @param batch                 The batch to import <i>(may be null or empty, though both of those states result in nothing happening)</i>.
@@ -43,8 +42,7 @@ public interface BatchImporter
      * @param dryRun                Flag indicating that the import should be a "dry run" (nothing written to the repository).
      * @throws InterruptedException If the batch is interrupted during processing.
      */
-    public void importBatch(Scanner scanner,
-                            String  userId,
+    public void importBatch(String  userId,
                             NodeRef target,
                             Batch   batch,
                             boolean replaceExisting,

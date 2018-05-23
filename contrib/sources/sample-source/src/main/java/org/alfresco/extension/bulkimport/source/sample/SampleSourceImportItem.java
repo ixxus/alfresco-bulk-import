@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007-2015 Peter Monks.
+ * Copyright (C) 2007 Peter Monks
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -54,7 +54,7 @@ public final class SampleSourceImportItem
 
     private final static NavigableSet<SampleSourceImportItemVersion> synthesiseVersions(final String name, final boolean isDirectory, final int numVersions)
     {
-        NavigableSet<SampleSourceImportItemVersion> result = new TreeSet<SampleSourceImportItemVersion>();
+        NavigableSet<SampleSourceImportItemVersion> result = new TreeSet<>();
         
         // Add at least one version
         result.add(new SampleSourceImportItemVersion(name, isDirectory, BigDecimal.ONE));

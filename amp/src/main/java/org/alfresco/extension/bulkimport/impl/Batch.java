@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007-2015 Peter Monks.
+ * Copyright (C) 2007 Peter Monks
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -37,10 +37,10 @@ import org.alfresco.extension.bulkimport.source.BulkImportItemVersion;
 public final class Batch
     implements Iterable<BulkImportItem<BulkImportItemVersion>>
 {
-    private final int                           number;
+    private final int                                         number;
     private final List<BulkImportItem<BulkImportItemVersion>> contents;
 
-    public Batch(final int                           number,
+    public Batch(final int                                         number,
                  final List<BulkImportItem<BulkImportItemVersion>> contents)
     {
         if (number <= 0)

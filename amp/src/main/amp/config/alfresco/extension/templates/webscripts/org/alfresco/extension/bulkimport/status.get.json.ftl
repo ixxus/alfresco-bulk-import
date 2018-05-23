@@ -24,6 +24,7 @@
   [/#if]
   "stopping"                       : ${importStatus.isStopping()?c},
   "scanning"                       : ${importStatus.isScanning()?c},
+  "paused"                         : ${importStatus.isPaused()?c},
   "succeeded"                      : ${importStatus.succeeded()?c},
   "failed"                         : ${importStatus.failed()?c},
   "stopped"                        : ${importStatus.stopped()?c},
@@ -60,6 +61,8 @@
   "lastException"                  : "${importStatus.lastExceptionAsString?js_string?replace("\\'", "'")?replace("\\>", ">")}",
   [/#if]
   "batchWeight"                    : ${importStatus.batchWeight?c},
+  "queuedBatches"                  : ${importStatus.queueSize?c},
+  "maxQueuedBatches"               : ${importStatus.queueCapacity?c},
   "numberOfActiveThreads"          : ${importStatus.numberOfActiveThreads?c},
   "totalNumberOfThreads"           : ${importStatus.totalNumberOfThreads?c},
   [#if importStatus.currentlyScanning??]

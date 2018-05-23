@@ -19,57 +19,61 @@
 
 package org.alfresco.extension.bulkimport.webscripts;
 
-import java.util.HashMap;
-import java.util.Map;
 
+import org.alfresco.extension.bulkimport.BulkImporter;
 import org.springframework.extensions.webscripts.Cache;
 import org.springframework.extensions.webscripts.DeclarativeWebScript;
 import org.springframework.extensions.webscripts.Status;
 import org.springframework.extensions.webscripts.WebScriptRequest;
 
-import org.alfresco.extension.bulkimport.BulkImporter;
+import java.util.HashMap;
+import java.util.Map;
 
 
 /**
- * Web Script class that provides status information on the bulk filesystem import process.
+ * Web Script class that resumes a bulk import, if one is paused.
  *
  * @author Peter Monks (peter.monks@alfresco.com)
  */
-public class BulkImportStatusWebScript
+public class BulkImportResumeWebScript
     extends DeclarativeWebScript
 {
-    // Output parameters (for Freemarker)
-    private final static String RESULT_IMPORT_STATUS = "importStatus";
-    
-    // Attributes
     private final BulkImporter importer;
-    
-    
-    public BulkImportStatusWebScript(final BulkImporter importer)
+
+
+    public BulkImportResumeWebScript(final BulkImporter importer)
     {
         // PRECONDITIONS
         assert importer != null : "importer must not be null.";
-        
-        //BODY
+
+        // BODY
         this.importer = importer;
     }
-    
+
 
     /**
-     * @see org.alfresco.web.scripts.DeclarativeWebScript#executeImpl(org.alfresco.web.scripts.WebScriptRequest, org.alfresco.web.scripts.Status, org.alfresco.web.scripts.Cache)
+     * @see DeclarativeWebScript#executeImpl(WebScriptRequest, Status, Cache)
      */
     @Override
-    protected Map<String, Object> executeImpl(final WebScriptRequest request,
-                                              final Status           status,
-                                              final Cache            cache)
+    protected Map<String, Object> executeImpl(final WebScriptRequest request, final Status status, final Cache cache)
     {
         Map<String, Object> result = new HashMap<>();
-        
+
         cache.setNeverCache(true);
         
-        result.put(RESULT_IMPORT_STATUS, importer.getStatus());
+        if (importer.getStatus().isPaused())
+        {
+            result.put("result", "resume requested");
+            importer.resume();
+            status.setCode(Status.STATUS_ACCEPTED, "Resume requested.");
+            status.setRedirect(true);  // Make sure the custom 202 status template is used (why this is needed at all is beyond me...)
+        }
+        else
+        {
+            result.put("result", "no imports in progress");
+            status.setCode(Status.STATUS_BAD_REQUEST, "No bulk imports are in progress.");
+        }
         
         return(result);
     }
-    
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007-2015 Peter Monks.
+ * Copyright (C) 2007 Peter Monks
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,19 +23,20 @@ import java.util.ArrayList;
 import java.util.IllegalFormatException;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.Phaser;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.nio.channels.ClosedByInterruptException;
 
+import org.alfresco.extension.bulkimport.util.ThreadPauser;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+
 import org.alfresco.service.ServiceRegistry;
 import org.alfresco.service.cmr.repository.NodeRef;
+
 import org.alfresco.extension.bulkimport.BulkImportCallback;
 import org.alfresco.extension.bulkimport.BulkImportCompletionHandler;
 import org.alfresco.extension.bulkimport.BulkImportStatus;
-import org.alfresco.extension.bulkimport.impl.WritableBulkImportStatus;
+
 import org.alfresco.extension.bulkimport.source.BulkImportItem;
 import org.alfresco.extension.bulkimport.source.BulkImportSource;
 import org.alfresco.extension.bulkimport.source.BulkImportItemVersion;
@@ -64,8 +65,8 @@ public final class Scanner
     private final static String PARAMETER_REPLACE_EXISTING = "replaceExisting";
     private final static String PARAMETER_DRY_RUN          = "dryRun";
     
-    private final static int MULTITHREADING_THRESHOLD = 3;  // The number of batches above which multi-threading kicks in
-    
+    private final static int MULTITHREADING_THRESHOLD = 3;    // The number of batches above which multi-threading kicks in
+
     private final static int ONE_GIGABYTE = (int)Math.pow(2, 30);
 
     private final static BulkImportCompletionHandler loggingBulkImportCompletionHandler = new LoggingBulkImportCompletionHandler();
@@ -73,6 +74,7 @@ public final class Scanner
     private final String                            userId;
     private final int                               batchWeight;
     private final WritableBulkImportStatus          importStatus;
+    private final ThreadPauser                      pauser;
     private final BulkImportSource                  source;
     private final NodeRef                           target;
     private final String                            targetAsPath;
@@ -84,19 +86,20 @@ public final class Scanner
     private final boolean dryRun;
 
     // Stateful unpleasantness
-    private Map<String, List<String>>     parameters;
-    private BulkImportThreadPoolExecutor  importThreadPool;
-    private Phaser                        phaser;
-    private int                           currentBatchNumber;
+    private Map<String, List<String>>                   parameters;
+    private BulkImportThreadPoolExecutor                importThreadPool;
+    private int                                         currentBatchNumber;
     private List<BulkImportItem<BulkImportItemVersion>> currentBatch;
-    private int                           weightOfCurrentBatch;
-    private boolean                       multiThreadedImport;
-    
+    private int                                         weightOfCurrentBatch;
+    private boolean                                     filePhase;
+    private boolean                                     multiThreadedImport;
+
     
     public Scanner(final ServiceRegistry                   serviceRegistry,
                    final String                            userId,
                    final int                               batchWeight,
                    final WritableBulkImportStatus          importStatus,
+                   final ThreadPauser                      pauser,
                    final BulkImportSource                  source,
                    final Map<String, List<String>>         parameters,
                    final NodeRef                           target,
@@ -109,6 +112,7 @@ public final class Scanner
         assert userId           != null : "userId must not be null.";
         assert batchWeight      > 0     : "batchWeight must be > 0.";
         assert importStatus     != null : "importStatus must not be null.";
+        assert pauser           != null : "pauser must not be null.";
         assert source           != null : "source must not be null.";
         assert parameters       != null : "parameters must not be null.";
         assert target           != null : "target must not be null.";
@@ -119,6 +123,7 @@ public final class Scanner
         this.userId             = userId;
         this.batchWeight        = batchWeight;
         this.importStatus       = importStatus;
+        this.pauser             = pauser;
         this.source             = source;
         this.parameters         = parameters;
         this.target             = target;
@@ -130,12 +135,11 @@ public final class Scanner
         this.replaceExisting = parameters.get(PARAMETER_REPLACE_EXISTING) == null ? false : Boolean.parseBoolean(parameters.get(PARAMETER_REPLACE_EXISTING).get(0));
         this.dryRun          = parameters.get(PARAMETER_DRY_RUN)          == null ? false : Boolean.parseBoolean(parameters.get(PARAMETER_DRY_RUN).get(0));
 
-        phaser               = new Phaser();
-        currentBatchNumber   = 0;
-        currentBatch         = null;
-        weightOfCurrentBatch = 0;
-        multiThreadedImport  = false;
-        
+        this.currentBatchNumber   = 0;
+        this.currentBatch         = null;
+        this.weightOfCurrentBatch = 0;
+        this.filePhase            = false;
+        this.multiThreadedImport  = false;
     }
     
     
@@ -161,32 +165,22 @@ public final class Scanner
                                        batchWeight,
                                        inPlacePossible,
                                        dryRun);
-            
-            phaser.register();
-            
-            // Default pool sizes (which get overridden per phase)
-            final int folderPhasePoolSize = importThreadPool.getCorePoolSize();
-            final int filePhasePoolSize   = importThreadPool.getMaximumPoolSize();
 
             // ------------------------------------------------------------------
-            // Phase 1 - Folder scanning
+            // Phase 1 - Folder scanning (single threaded)
             // ------------------------------------------------------------------
 
-            // Minimise level of concurrency, to reduce risk of out-of-order batches (child before parent)
-
-            importThreadPool.setCorePoolSize(folderPhasePoolSize);
-            importThreadPool.setMaximumPoolSize(folderPhasePoolSize);
             source.scanFolders(importStatus, this);
             
-            if (debug(log)) debug(log, "Folder scan complete in " + getHumanReadableDuration(importStatus.getDurationInNs()) + ".");
+            if (debug(log)) debug(log, "Folder import complete in " + getHumanReadableDuration(importStatus.getDurationInNs()) + ".");
             
             // ------------------------------------------------------------------
             // Phase 2 - File scanning
             // ------------------------------------------------------------------
 
+            filePhase = true;
+            
             // Maximise level of concurrency, since there's no longer any risk of out-of-order batches
-            importThreadPool.setCorePoolSize(filePhasePoolSize);
-            importThreadPool.setMaximumPoolSize(filePhasePoolSize);
             source.scanFiles(importStatus, this);
 
             if (debug(log)) debug(log, "File scan complete in " + getHumanReadableDuration(importStatus.getDurationInNs()) + ".");
@@ -199,19 +193,18 @@ public final class Scanner
 
             submitCurrentBatch();  // Submit whatever is left in the final (partial) batch...
             awaitCompletion();
-            importThreadPool.shutdown();
-            importThreadPool.await();
             
             if (debug(log)) debug(log, "Import complete" + (multiThreadedImport ? ", thread pool shutdown" : "") + ".");
         }
         catch (final Throwable t)
         {
-            Throwable rootCause          = getRootCause(t);  // Unwrap exceptions to get the root cause
+            Throwable rootCause          = getRootCause(t);
             String    rootCauseClassName = rootCause.getClass().getName();
             
-            if (rootCause instanceof InterruptedException ||
-                rootCause instanceof ClosedByInterruptException ||
-                "com.hazelcast.core.RuntimeInterruptedException".equals(rootCauseClassName))  // Avoid a static dependency on Hazelcast...
+            if (importStatus.isStopping() &&
+                (rootCause instanceof InterruptedException ||
+                 rootCause instanceof ClosedByInterruptException ||
+                 "com.hazelcast.core.RuntimeInterruptedException".equals(rootCauseClassName)))  // For compatibility across 4.x *sigh*
             {
                 // A stop import was requested
                 if (debug(log)) debug(log, Thread.currentThread().getName() + " was interrupted by a stop request.", t);
@@ -228,7 +221,7 @@ public final class Scanner
             
             try
             {
-                importThreadPool.await();
+                importThreadPool.awaitTermination(Long.MAX_VALUE, TimeUnit.DAYS);  // Wait forever (technically merely a very long time, but whatevs...)
             }
             catch (final InterruptedException ie)
             {
@@ -268,7 +261,7 @@ public final class Scanner
         }
     }
     
-
+    
     /**
      * @see org.alfresco.extension.bulkimport.BulkImportCallback#submit(org.alfresco.extension.bulkimport.source.BulkImportItem)
      */
@@ -290,7 +283,7 @@ public final class Scanner
         }
 
         // Body
-        if (Thread.currentThread().isInterrupted()) throw new InterruptedException(Thread.currentThread().getName() + " was interrupted. Terminating early.");
+        if (importStatus.isStopping() || Thread.currentThread().isInterrupted()) throw new InterruptedException(Thread.currentThread().getName() + " was interrupted. Terminating early.");
         
         // If the weight of the new item would blow out the current batch, submit the batch as-is (i.e. *before* adding the newly submitted item).
         // This ensures that heavy items start a new batch (and possibly end up in a batch by themselves).
@@ -305,7 +298,7 @@ public final class Scanner
         if (currentBatch == null)
         {
             currentBatchNumber++;
-            currentBatch         = new ArrayList<BulkImportItem<BulkImportItemVersion>>(batchWeight);
+            currentBatch         = new ArrayList<>(batchWeight);
             weightOfCurrentBatch = 0;
         }
         
@@ -313,11 +306,14 @@ public final class Scanner
         currentBatch.add(item);
         weightOfCurrentBatch += weight;
     }
-    
-    
+
+
     private synchronized void submitCurrentBatch()
         throws InterruptedException
     {
+        // Implement pauses at batch boundaries only
+        pauser.blockIfPaused();
+
         if (currentBatch != null && currentBatch.size() > 0)
         {
             final Batch batch = new Batch(currentBatchNumber, currentBatch);
@@ -334,10 +330,10 @@ public final class Scanner
             else
             {
                 // Import the batch directly on this thread
-                batchImporter.importBatch(this, userId, target, batch, replaceExisting, dryRun);
+                batchImporter.importBatch(userId, target, batch, replaceExisting, dryRun);
                 
                 // Check if the multi-threading threshold has been reached
-                multiThreadedImport = currentBatchNumber >= MULTITHREADING_THRESHOLD;
+                multiThreadedImport = filePhase && currentBatchNumber >= MULTITHREADING_THRESHOLD;
                 
                 if (multiThreadedImport && debug(log)) debug(log, "Multi-threading threshold (" + MULTITHREADING_THRESHOLD + " batch" + pluralise(MULTITHREADING_THRESHOLD, "es") + ") reached - switching to multi-threaded import.");
             }
@@ -351,13 +347,20 @@ public final class Scanner
      * 
      * @param batch The batch to submit <i>(may be null or empty, although that will result in a no-op)</i>.
      */
-    void submitBatch(final Batch batch)    // Note package scope - this is deliberate!
+    private void submitBatch(final Batch batch)
     {
-        if (batch != null &&
-            batch.size() > 0)
+        if (batch        != null &&
+            batch.size() >  0)
         {
-            phaser.register();
-            importThreadPool.execute(new BatchImportJob(batch));
+            if (importStatus.inProgress() &&
+                !importStatus.isStopping())
+            {
+                importThreadPool.execute(new BatchImportJob(batch));
+            }
+            else
+            {
+                if (warn(log)) warn(log, "New batch submitted during shutdown - ignoring new work.");
+            }
         }
     }
     
@@ -371,29 +374,19 @@ public final class Scanner
     private final void awaitCompletion()
         throws InterruptedException
     {
-        // No need to wait if we didn't go multi-threaded
         if (multiThreadedImport)
         {
-            // ...wait for everything to wrap up...
+            // Log status then wait for everything to wrap up...
             if (debug(log)) debug(log, "Scanning complete. Waiting for completion of multithreaded import.");
             logStatusInfo();
+        }
 
-            final int phaseNumber = phaser.arriveAndDeregister();
-            boolean   done        = false;
-            
-            while (!done)
-            {
-                try
-                {
-                    phaser.awaitAdvanceInterruptibly(phaseNumber, SLEEP_TIME, SLEEP_TIME_UNITS);
-                    done = true;
-                }
-                catch (final TimeoutException te)
-                {
-                    // Log a status message every SLEEP_TIME SLEEP_TIME_UNITS (e.g. 10 minutes), then repeat
-                    logStatusInfo();
-                }
-            }
+        importThreadPool.shutdown();  // Orderly shutdown (lets the queue drain)
+
+        // Log status every hour, then go back to waiting - in single threaded case this won't wait at all
+        while (!importThreadPool.awaitTermination(1, TimeUnit.HOURS))
+        {
+            logStatusInfo();
         }
     }
     
@@ -407,7 +400,7 @@ public final class Scanner
         {
             try
             {
-                final int   batchesInProgress           = importThreadPool.queueSize() + importThreadPool.getActiveCount();
+                final int   batchesInProgress           = importThreadPool.getQueueSize() + importThreadPool.getActiveCount();
                 final Float batchesPerSecond            = importStatus.getTargetCounterRate(BulkImportStatus.TARGET_COUNTER_BATCHES_COMPLETE, SECONDS);
                 final Long  estimatedCompletionTimeInNs = importStatus.getEstimatedRemainingDurationInNs();
                 String      message                     = null;
@@ -463,7 +456,7 @@ public final class Scanner
     private final class BatchImportJob
         implements Runnable
     {
-        private final Batch batch;
+        private final Batch  batch;
         
         public BatchImportJob(final Batch batch)
         {
@@ -476,25 +469,21 @@ public final class Scanner
         {
             try
             {
-                batchImporter.importBatch(Scanner.this, userId, target, batch, replaceExisting, dryRun);
+                batchImporter.importBatch(userId, target, batch, replaceExisting, dryRun);
             }
             catch (final Throwable t)
             {
-                Throwable rootCause = t;
+                Throwable rootCause          = getRootCause(t);
+                String    rootCauseClassName = rootCause.getClass().getName();
                 
-                while (rootCause.getCause() != null)
-                {
-                    rootCause = rootCause.getCause();
-                }
-                
-                String rootCauseClassName = rootCause.getClass().getName();
-                
-                if (rootCause instanceof InterruptedException ||
-                    rootCause instanceof ClosedByInterruptException ||
-                    "com.hazelcast.core.RuntimeInterruptedException".equals(rootCauseClassName))  // For compatibility across 4.x *sigh*
+                if (importStatus.isStopping() &&
+                    (rootCause instanceof InterruptedException ||
+                     rootCause instanceof ClosedByInterruptException ||
+                     "com.hazelcast.core.RuntimeInterruptedException".equals(rootCauseClassName)))  // For compatibility across 4.x *sigh*
                 {
                     // A stop import was requested
                     if (debug(log)) debug(log, Thread.currentThread().getName() + " was interrupted by a stop request.", t);
+                    Thread.currentThread().interrupt();                    
                 }
                 else
                 {
@@ -505,10 +494,6 @@ public final class Scanner
                     if (debug(log)) debug(log, "Shutting down import thread pool.");
                     importThreadPool.shutdownNow();
                 }
-            }
-            finally
-            {
-                phaser.arrive();
             }
         }
     }

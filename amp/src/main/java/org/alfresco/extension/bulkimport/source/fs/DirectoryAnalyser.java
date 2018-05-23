@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007-2015 Peter Monks.
+ * Copyright (C) 2007 Peter Monks
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -145,6 +145,7 @@ public final class DirectoryAnalyser
     
     
     private Pair<List<FilesystemBulkImportItem>, List<FilesystemBulkImportItem>> analyseDirectory(final String sourceRelativeParentDirectory, final File[] directoryListing)
+        throws InterruptedException
     {
         Pair<List<FilesystemBulkImportItem>, List<FilesystemBulkImportItem>> result = null;
         
@@ -163,15 +164,18 @@ public final class DirectoryAnalyser
     
     
     private Map<String, SortedMap<BigDecimal, Pair<File, File>>> categoriseFiles(final File[] directoryListing)
+        throws InterruptedException
     {
         Map<String, SortedMap<BigDecimal, Pair<File, File>>> result = null;
         
         if (directoryListing != null)
         {
-            result = new HashMap<String, SortedMap<BigDecimal, Pair<File, File>>>();
+            result = new HashMap<>();
             
             for (final File file : directoryListing)
             {
+                if (importStatus.isStopping() || Thread.currentThread().isInterrupted()) throw new InterruptedException(Thread.currentThread().getName() + " was interrupted. Terminating early.");
+                
                 categoriseFile(result, file);
             }
         }
@@ -200,7 +204,7 @@ public final class DirectoryAnalyser
                 // Find the item
                 if (versions == null)
                 {
-                    versions = new TreeMap<BigDecimal, Pair<File, File>>();
+                    versions = new TreeMap<>();
                     categorisedFiles.put(parentName, versions);
                 }
                 
@@ -209,17 +213,17 @@ public final class DirectoryAnalyser
                 
                 if (version == null)
                 {
-                    version = new Pair<File, File>(null, null);
+                    version = new Pair<>(null, null);
                 }
                 
                 // Categorise the incoming file in that version of the item
                 if (isMetadata)
                 {
-                    version = new Pair<File, File>(version.getFirst(), file);
+                    version = new Pair<>(version.getFirst(), file);
                 }
                 else
                 {
-                    version = new Pair<File, File>(file, version.getSecond());
+                    version = new Pair<>(file, version.getSecond());
                 }
                 
                 versions.put(versionNumber, version);
@@ -244,18 +248,21 @@ public final class DirectoryAnalyser
     
     private Pair<List<FilesystemBulkImportItem>, List<FilesystemBulkImportItem>> constructImportItems(final String                                             sourceRelativeParentDirectory,
                                                                                                       final Map<String, SortedMap<BigDecimal,Pair<File,File>>> categorisedFiles)
+        throws InterruptedException
     {
         Pair<List<FilesystemBulkImportItem>, List<FilesystemBulkImportItem>> result = null;
         
         if (categorisedFiles != null)
         {
-            final List<FilesystemBulkImportItem> directoryItems = new ArrayList<FilesystemBulkImportItem>();
-            final List<FilesystemBulkImportItem> fileItems      = new ArrayList<FilesystemBulkImportItem>();
+            final List<FilesystemBulkImportItem> directoryItems = new ArrayList<>();
+            final List<FilesystemBulkImportItem> fileItems      = new ArrayList<>();
             
-            result = new Pair<List<FilesystemBulkImportItem>, List<FilesystemBulkImportItem>>(directoryItems, fileItems);
+            result = new Pair<>(directoryItems, fileItems);
             
             for (final String parentName : categorisedFiles.keySet())
             {
+                if (importStatus.isStopping() || Thread.currentThread().isInterrupted()) throw new InterruptedException(Thread.currentThread().getName() + " was interrupted. Terminating early.");
+                
                 final SortedMap<BigDecimal,Pair<File,File>>         itemVersions = categorisedFiles.get(parentName);
                 final NavigableSet<FilesystemBulkImportItemVersion> versions     = constructImportItemVersions(itemVersions);
                 final boolean                                       isDirectory  = versions.last().isDirectory();
@@ -280,16 +287,19 @@ public final class DirectoryAnalyser
     
     
     private final NavigableSet<FilesystemBulkImportItemVersion> constructImportItemVersions(final SortedMap<BigDecimal,Pair<File,File>> itemVersions)
+        throws InterruptedException
     {
         // PRECONDITIONS
         if (itemVersions        == null) throw new IllegalArgumentException("itemVersions cannot be null.");
         if (itemVersions.size() <= 0)    throw new IllegalArgumentException("itemVersions cannot be empty.");
         
         // Body
-        final NavigableSet<FilesystemBulkImportItemVersion> result = new TreeSet<FilesystemBulkImportItemVersion>();
+        final NavigableSet<FilesystemBulkImportItemVersion> result = new TreeSet<>();
         
         for (final BigDecimal versionNumber : itemVersions.keySet())
         {
+            if (importStatus.isStopping() || Thread.currentThread().isInterrupted()) throw new InterruptedException(Thread.currentThread().getName() + " was interrupted. Terminating early.");
+            
             final Pair<File,File>   contentAndMetadataFiles = itemVersions.get(versionNumber);
             final FilesystemBulkImportItemVersion version   = new FilesystemBulkImportItemVersion(serviceRegistry,
                                                                                                   configuredContentStore,

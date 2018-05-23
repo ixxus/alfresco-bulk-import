@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007-2015 Peter Monks.
+ * Copyright (C) 2007 Peter Monks
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -42,14 +42,15 @@ import static org.alfresco.extension.bulkimport.util.LogUtils.*;
  * Thread-safe implementation of Bulk Import Status.
  *
  * @author Peter Monks (pmonks@gmail.com)
- * @see org.alfresco.extension.bulkimport.impl.WriteableBulkImportStatus
+ * @see org.alfresco.extension.bulkimport.impl.WritableBulkImportStatus
  */
 public class BulkImportStatusImpl
     implements WritableBulkImportStatus
 {
     // General information
     private AtomicBoolean                inProgress            = new AtomicBoolean(false);
-    private ProcessingState              state                 = ProcessingState.NEVER_RUN;
+    private volatile ProcessingState     state                 = ProcessingState.NEVER_RUN;
+    private volatile ProcessingState     priorState            = state;
     private String                       initiatingUserId      = null;
     private BulkImportSource             source                = null;
     private String                       targetSpace           = null;
@@ -68,16 +69,17 @@ public class BulkImportStatusImpl
     private BulkImportThreadPoolExecutor threadPool            = null;
     
     // Counters
-    private ConcurrentMap<String, AtomicLong> sourceCounters = new ConcurrentHashMap<String, AtomicLong>(16);  // Start with a reasonable number of source counter slots
-    private ConcurrentMap<String, AtomicLong> targetCounters = new ConcurrentHashMap<String, AtomicLong>(16);  // Start with a reasonable number of target counter slots
+    private ConcurrentMap<String, AtomicLong> sourceCounters = new ConcurrentHashMap<>(16);  // Start with a reasonable number of source counter slots
+    private ConcurrentMap<String, AtomicLong> targetCounters = new ConcurrentHashMap<>(16);  // Start with a reasonable number of target counter slots
     
     // Public methods
     @Override public String              getInitiatingUserId()   { return(initiatingUserId); };
     @Override public String              getSourceName()         { String              result = null; if (source != null) result = source.getName();       return(result); }
     @Override public Map<String, String> getSourceParameters()   { Map<String, String> result = null; if (source != null) result = source.getParameters(); return(result); }
     @Override public String              getTargetPath()         { return(targetSpace); }
-    @Override public boolean             inProgress()            { return(ProcessingState.SCANNING.equals(state) || ProcessingState.IMPORTING.equals(state) || ProcessingState.STOPPING.equals(state)); }
+    @Override public boolean             inProgress()            { return(ProcessingState.SCANNING.equals(state) || ProcessingState.IMPORTING.equals(state) || ProcessingState.PAUSED.equals(state) || ProcessingState.STOPPING.equals(state)); }
     @Override public boolean             isScanning()            { return(ProcessingState.SCANNING.equals(state)); }
+    @Override public boolean             isPaused()              { return(ProcessingState.PAUSED.equals(state)); }
     @Override public boolean             isStopping()            { return(ProcessingState.STOPPING.equals(state)); }
     @Override public boolean             neverRun()              { return(ProcessingState.NEVER_RUN.equals(state)); }
     @Override public boolean             succeeded()             { return(ProcessingState.SUCCEEDED.equals(state)); }
@@ -88,8 +90,8 @@ public class BulkImportStatusImpl
     @Override public Date                getStartDate()          { return(copyDate(startDate)); }
     @Override public Date                getScanEndDate()        { return(copyDate(scanEndDate)); }
     @Override public Date                getEndDate()            { return(copyDate(endDate)); }
-    @Override public String              getProcessingState()    { return(state.toString()); }
-    
+    @Override public String              getProcessingState()    { return state.toString(); }
+
     @Override
     public Long getDurationInNs()
     {
@@ -147,14 +149,14 @@ public class BulkImportStatusImpl
     {
         Long result = null;
         
-        // Only calculate an estimated remaining duration once scanning has completed
-        if (inProgress() && !isScanning())
+        // Only calculate an estimated remaining duration once scanning has completed, and if we're not paused
+        if (inProgress() && !isScanning() && !isPaused())
         {
             final Float batchesPerNs = getTargetCounterRate(TARGET_COUNTER_BATCHES_COMPLETE, NANOSECONDS);
     
             if (batchesPerNs != null && batchesPerNs.floatValue() > 0.0F && threadPool != null)
             {
-                final long batchesInProgress = threadPool.queueSize() + threadPool.getActiveCount();
+                final long batchesInProgress = threadPool.getQueueSize() + threadPool.getActiveCount();
                 
                 result = (long)(batchesInProgress / batchesPerNs.floatValue());
             }
@@ -193,15 +195,17 @@ public class BulkImportStatusImpl
     }
     
     @Override public long        getBatchWeight()                                                        { return(batchWeight); }
+    @Override public int         getQueueSize()                                                          { return(threadPool == null ? 0 : threadPool.getQueueSize()); }
+    @Override public int         getQueueCapacity()                                                      { return(threadPool == null ? 0 : threadPool.getQueueCapacity()); }
     @Override public int         getNumberOfActiveThreads()                                              { return(threadPool == null ? 0 : threadPool.getActiveCount()); }
     @Override public int         getTotalNumberOfThreads()                                               { return(threadPool == null ? 0 : threadPool.getPoolSize()); }
     @Override public String      getCurrentlyScanning()                                                  { return(currentlyScanning); }
     @Override public String      getCurrentlyImporting()                                                 { return(currentlyImporting); }
-    @Override public Set<String> getSourceCounterNames()                                                 { return(Collections.unmodifiableSet(new TreeSet<String>(sourceCounters.keySet()))); }  // Use TreeSet to sort the set
+    @Override public Set<String> getSourceCounterNames()                                                 { return(Collections.unmodifiableSet(new TreeSet<>(sourceCounters.keySet()))); }  // Use TreeSet to sort the set
     @Override public Long        getSourceCounter(final String counterName)                              { return(sourceCounters.get(counterName) == null ? null : sourceCounters.get(counterName).get()); }
     @Override public Float       getSourceCounterRate(final String counterName)                          { return(calculateRate(getSourceCounter(counterName), getScanDurationInNs(), TimeUnit.SECONDS)); }
     @Override public Float       getSourceCounterRate(final String counterName, final TimeUnit timeUnit) { return(calculateRate(getSourceCounter(counterName), getScanDurationInNs(), timeUnit)); }
-    @Override public Set<String> getTargetCounterNames()                                                 { return(Collections.unmodifiableSet(new TreeSet<String>(targetCounters.keySet()))); }  // Use TreeSet to sort the set
+    @Override public Set<String> getTargetCounterNames()                                                 { return(Collections.unmodifiableSet(new TreeSet<>(targetCounters.keySet()))); }  // Use TreeSet to sort the set
     @Override public Long        getTargetCounter(String counterName)                                    { return(targetCounters.get(counterName) == null ? null : targetCounters.get(counterName).get()); }
     @Override public Float       getTargetCounterRate(final String counterName)                          { return(calculateRate(getTargetCounter(counterName), getDurationInNs(), TimeUnit.SECONDS)); }
     @Override public Float       getTargetCounterRate(final String counterName, final TimeUnit timeUnit) { return(calculateRate(getTargetCounter(counterName), getDurationInNs(), timeUnit)); }
@@ -248,6 +252,8 @@ public class BulkImportStatusImpl
     }
     
     @Override public void scanningComplete() { this.state = ProcessingState.IMPORTING; this.currentlyScanning = null; this.scanEndDate = new Date(); this.endScanNs = Long.valueOf(System.nanoTime()); }
+    @Override public void pauseRequested()   { this.priorState = this.state; this.state = ProcessingState.PAUSED; }
+    @Override public void resumeRequested()  { this.state = ProcessingState.PAUSED; this.state = this.priorState; }
     @Override public void stopRequested()    { this.state = ProcessingState.STOPPING; }
     
     @Override
@@ -258,15 +264,15 @@ public class BulkImportStatusImpl
             throw new IllegalStateException("Import not in progress.");
         }
         
-        this.endNs      = new Long(System.nanoTime());
+        this.endNs      = Long.valueOf(System.nanoTime());
         this.endDate    = new Date();
         this.threadPool = null;
         
-        if (ProcessingState.STOPPING.equals(this.state))
+        if (isStopping())
         {
             this.state = ProcessingState.STOPPED;
         }
-        else if (this.lastException != null)
+        else if (getLastException() != null)
         {
             this.state = ProcessingState.FAILED;
         }
@@ -373,7 +379,7 @@ public class BulkImportStatusImpl
     // Private enum for tracking current execution state
     private enum ProcessingState
     {
-        SCANNING, IMPORTING, STOPPING,          // In-progress states
+        SCANNING, IMPORTING, PAUSED, STOPPING,  // In-progress states
         NEVER_RUN, SUCCEEDED, FAILED, STOPPED;  // Not in-progress states
         
         @Override
@@ -389,6 +395,10 @@ public class BulkImportStatusImpl
                     
                 case IMPORTING:
                     result = "Importing";
+                    break;
+
+                case PAUSED:
+                    result = "Paused";
                     break;
                     
                 case STOPPING:

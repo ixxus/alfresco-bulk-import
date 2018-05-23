@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007-2015 Peter Monks.
+ * Copyright (C) 2007 Peter Monks
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -217,10 +217,10 @@ public class Utils
     
     public final static String buildTextMessage(final Throwable t)
     {
-        StringBuffer result        = new StringBuffer();
-        String       timeOfFailure = (new Date()).toString();
-        String       hostName      = null;
-        String       ipAddress     = null;
+        StringBuilder result        = new StringBuilder();
+        String        timeOfFailure = (new Date()).toString();
+        String        hostName      = null;
+        String        ipAddress     = null;
 
         try
         {
@@ -252,7 +252,7 @@ public class Utils
     
     public final static String renderExceptionStackAsText(final Throwable t)
     {
-        StringBuffer result = new StringBuffer();
+        StringBuilder result = new StringBuilder();
 
         if (t != null)
         {
@@ -284,7 +284,7 @@ public class Utils
     
     private final static String renderStackTraceElements(final StackTraceElement[] elements)
     {
-        StringBuffer result = new StringBuffer();
+        StringBuilder result = new StringBuilder();
 
         if (elements != null)
         {
@@ -296,5 +296,6 @@ public class Utils
 
         return(result.toString());
     }
-
+    
+    
 }

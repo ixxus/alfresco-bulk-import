@@ -13,7 +13,7 @@
   <parent>
     <groupId>org.alfresco.maven</groupId>
     <artifactId>alfresco-sdk-parent</artifactId>
-    <version>2.1.0</version>
+    <version>2.2.0</version>
   </parent>
 
   <dependencyManagement>
@@ -37,7 +37,7 @@
     <dependency>
       <groupId>org.alfresco.extension</groupId>
       <artifactId>alfresco-bulk-import-api</artifactId>
-      <version>2.0.1-SNAPSHOT</version>
+      <version>2.1.1-SNAPSHOT</version>
       <scope>provided</scope>
     </dependency>
   </dependencies>
@@ -51,6 +51,14 @@
         <configuration>
           <source>1.7</source>
           <target>1.7</target>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>com.versioneye</groupId>
+        <artifactId>versioneye-maven-plugin</artifactId>
+        <version>3.10.2</version>
+        <configuration>
+          <propertiesPath>${basedir}/.versioneye.properties</propertiesPath>
         </configuration>
       </plugin>
     </plugins>

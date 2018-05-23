@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007-2015 Peter Monks.
+ * Copyright (C) 2007 Peter Monks
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,9 +22,9 @@ package org.alfresco.extension.bulkimport.source.sample;
 
 import java.math.BigDecimal;
 
+import org.alfresco.model.ContentModel;
 import org.alfresco.service.cmr.repository.ContentWriter;
 import org.alfresco.extension.bulkimport.source.AbstractBulkImportItemVersion;
-import org.alfresco.extension.bulkimport.source.BulkImportItemVersion;
 
 
 /**
@@ -40,7 +40,7 @@ public final class SampleSourceImportItemVersion
                                          final boolean    isDirectory,
                                          final BigDecimal versionNumber)
     {
-        super(name, versionNumber);
+        super(isDirectory ? ContentModel.TYPE_FOLDER.toString() : ContentModel.TYPE_CONTENT.toString(), versionNumber);
 
         this.contentReference  = isDirectory ? null : "This is the content of version " + String.valueOf(versionNumber) + " of " + name + ".";
         this.metadataReference = null;  // Sample source doesn't support metadata

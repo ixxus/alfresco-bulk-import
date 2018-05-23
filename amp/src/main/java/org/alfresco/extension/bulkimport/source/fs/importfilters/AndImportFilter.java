@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007-2015 Peter Monks.
+ * Copyright (C) 2007 Peter Monks
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -42,7 +42,7 @@ public class AndImportFilter
         assert right != null : "right must not be null.";
         
         // Body
-        this.filters = new ArrayList<ImportFilter>(2);
+        this.filters = new ArrayList<>(2);
         
         filters.add(left);
         filters.add(right);

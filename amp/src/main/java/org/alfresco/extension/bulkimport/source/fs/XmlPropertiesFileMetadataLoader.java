@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007-2015 Peter Monks.
+ * Copyright (C) 2007 Peter Monks
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -125,7 +125,7 @@ public final class XmlPropertiesFileMetadataLoader
             @SuppressWarnings({"rawtypes", "unchecked"})
             Map<String, Serializable> properties = (Map)props;
 
-            result = new HashMap<String, Serializable>(properties);
+            result = new HashMap<>(properties);
         }
         catch (final IOException ioe)
         {

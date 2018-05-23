@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007-2015 Peter Monks.
+ * Copyright (C) 2007 Peter Monks
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -61,12 +61,25 @@ public interface BulkImporter
     
     
     /**
-     * Requests that an import be stopped, if one is in progress (which can be determined by calling <code>getStatus().inProgress()</code>.
+     * Request that the import be paused, if one is in progress (which can be determined by calling <code>getStatus().inProgress()</code>).
+     * Note that this is done asynchronously - it may take a little while for in-flight transactions to complete before they are paused.
+     */
+    void pause();
+
+
+    /**
+     * Request that a paused import be resumed, if one is paused (which can be determined by calling <code>getStatus().isPaused()</code>).
+     */
+    void resume();
+
+
+    /**
+     * Requests that an import be stopped, if one is in progress (which can be determined by calling <code>getStatus().inProgress()</code>).
      * Note that this is done asynchronously - it may take a little while for in-flight transactions to complete.
      */
     void stop();
-    
-    
+
+
     /**
      * @return A status object that describes the current state of the bulk filesystem importer <i>(will not be null)</i>.
      */

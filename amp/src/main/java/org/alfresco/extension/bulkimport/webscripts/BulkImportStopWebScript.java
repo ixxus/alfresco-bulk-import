@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007-2015 Peter Monks.
+ * Copyright (C) 2007 Peter Monks
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -58,24 +58,20 @@ public class BulkImportStopWebScript
     @Override
     protected Map<String, Object> executeImpl(final WebScriptRequest request, final Status status, final Cache cache)
     {
-        Map<String, Object> result = new HashMap<String, Object>();
+        Map<String, Object> result = new HashMap<>();
 
         cache.setNeverCache(true);
         
         if (importer.getStatus().inProgress())
         {
-            if (importer.getStatus().isStopping())
-            {
-                status.setCode(Status.STATUS_ACCEPTED, "A stop has previously been requested, and is in progress.");
-            }
-            else
-            {
-                importer.stop();
-                status.setCode(Status.STATUS_ACCEPTED, "Stop requested.");
-            }
+            result.put("result", "stop requested");
+            importer.stop();
+            status.setCode(Status.STATUS_ACCEPTED, "Stop requested.");
+            status.setRedirect(true);  // Make sure the custom 202 status template is used (why this is needed at all is beyond me...)
         }
         else
         {
+            result.put("result", "no imports in progress");
             status.setCode(Status.STATUS_BAD_REQUEST, "No bulk imports are in progress.");
         }
         

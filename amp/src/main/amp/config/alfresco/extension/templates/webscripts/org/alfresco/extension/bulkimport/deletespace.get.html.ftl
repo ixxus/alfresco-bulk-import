@@ -13,11 +13,11 @@
     <meta name="description" content="Bulk Import Tool - Delete Space">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     [#-- 3rd Party Stuff --]
-    <link rel="stylesheet" href="//code.jquery.com/ui/1.11.4/themes/smoothness/jquery-ui.css">
-    <script src="//code.jquery.com/jquery-2.1.4.js"></script>
-    <script src="//code.jquery.com/ui/1.11.4/jquery-ui.js"></script>
-    <script src="//cdnjs.cloudflare.com/ajax/libs/loglevel/1.2.0/loglevel.min.js"></script>
-    <script src="${url.context}/scripts/bulkimport/modernizr-2.8.3.min.js"></script>
+    <link rel="stylesheet" href="//code.jquery.com/ui/1.12.0/themes/smoothness/jquery-ui.css">
+    <script src="//code.jquery.com/jquery-2.2.4.js"></script>
+    <script src="//code.jquery.com/ui/1.12.0/jquery-ui.js"></script>
+    <script src="//cdnjs.cloudflare.com/ajax/libs/loglevel/1.4.0/loglevel.min.js"></script>
+    <script src="${url.context}/scripts/bulkimport/modernizr-3.3.1.min.js"></script>
     <script src="${url.context}/scripts/bulkimport/favicon.min.js"></script>
     [#-- Bulk import --]
     <link rel="stylesheet" href="${url.context}/css/bulkimport/normalize.css">
@@ -43,13 +43,13 @@
       </fieldset>
 
       <p><strong style="color:red">Warning! This operation will delete the space and <u>all</u> contents unconditionally, without archiving or an audit record!  It cannot be interrupted or undone!</strong></p>
-      <p><button class="button red" type="submit" name="submit">Delete!</button></p>
+      <p><button class="button red" type="submit" name="submit">&#9888; Delete! &#9888;</button></p>
       <p>Note: this operation can take a very long time (minutes to hours), and does not provide any status reporting.</p>
     </form>
 
     <p>Please see the <a target="_blank" href="https://github.com/pmonks/alfresco-bulk-import">project site</a> for documentation, known issues, updated versions, etc.</p>
     <hr/>
-    <p class="footnote">Bulk Import Tool v2.0.1-SNAPSHOT, Alfresco ${server.edition} v${server.version}</p>
+    <p class="footnote">Bulk Import Tool v2.1.1-SNAPSHOT, Alfresco ${server.edition} v${server.version}</p>
     <script>
       [#-- Target field autocomplete --]
       $(function() {

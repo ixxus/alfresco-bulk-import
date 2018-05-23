@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007-2015 Peter Monks.
+ * Copyright (C) 2007 Peter Monks
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -47,6 +47,7 @@ public interface BulkImportCallback
      * @throws InterruptedException If the thread is interrupted.
      */
     @SuppressWarnings("rawtypes")
-    public void submit(BulkImportItem item)
+    void submit(BulkImportItem item)
         throws InterruptedException;
+    
 }

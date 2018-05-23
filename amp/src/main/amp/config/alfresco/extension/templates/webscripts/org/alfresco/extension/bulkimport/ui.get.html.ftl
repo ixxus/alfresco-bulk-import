@@ -13,11 +13,11 @@
     <meta name="description" content="Bulk Import Tool">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     [#-- 3rd Party Stuff --]
-    <link rel="stylesheet" href="//code.jquery.com/ui/1.11.4/themes/smoothness/jquery-ui.css">
-    <script src="//code.jquery.com/jquery-2.1.4.js"></script>
-    <script src="//code.jquery.com/ui/1.11.4/jquery-ui.js"></script>
-    <script src="//cdnjs.cloudflare.com/ajax/libs/loglevel/1.2.0/loglevel.min.js"></script>
-    <script src="${url.context}/scripts/bulkimport/modernizr-2.8.3.min.js"></script>
+    <link rel="stylesheet" href="//code.jquery.com/ui/1.12.0/themes/smoothness/jquery-ui.css">
+    <script src="//code.jquery.com/jquery-2.2.4.js"></script>
+    <script src="//code.jquery.com/ui/1.12.0/jquery-ui.js"></script>
+    <script src="//cdnjs.cloudflare.com/ajax/libs/loglevel/1.4.0/loglevel.min.js"></script>
+    <script src="${url.context}/scripts/bulkimport/modernizr-3.3.1.min.js"></script>
     <script src="${url.context}/scripts/bulkimport/favicon.min.js"></script>
     [#-- Bulk import --]
     <link rel="stylesheet" href="${url.context}/css/bulkimport/normalize.css">
@@ -57,11 +57,11 @@
         <p><label for="dryRun">Dry run:</label> <input type="checkbox" id="dryRun" name="dryRun" value="true" unchecked/> checked means run through the process without writing to the repository</p>
       </fieldset>
 
-      <p><button class="button green" type="submit" name="submit">Initiate Bulk Import</button></p>
+      <p><button class="button green" type="submit" name="submit">&#9658; Initiate Bulk Import</button></p>
     </form>
     <p>Please see the <a target="_blank" href="https://github.com/pmonks/alfresco-bulk-import">project site</a> for documentation, known issues, updated versions, etc.</p>
     <hr/>
-    <p class="footnote">Bulk Import Tool v2.0.1-SNAPSHOT, Alfresco ${server.edition} v${server.version}</p>
+    <p class="footnote">Bulk Import Tool v2.1.1-SNAPSHOT, Alfresco ${server.edition} v${server.version}</p>
     <script>
       [#-- Re-enable the sourceBeanId field prior to submission, to workaround the stupid behaviour of "<select disabled>" --]
       $('#initiateBulkImportForm').on('submit', function() {

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007-2015 Peter Monks.
+ * Copyright (C) 2007 Peter Monks
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,6 +27,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import org.alfresco.service.cmr.version.Version;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
@@ -103,16 +104,16 @@ public final class BatchImporterImpl
     
 
     /**
-     * @see org.alfresco.extension.bulkimport.impl.BatchImporter#importBatch(java.util.concurrent.ExecutorService, java.lang.String, org.alfresco.service.cmr.repository.NodeRef, java.util.List, boolean, boolean)
+     * @see org.alfresco.extension.bulkimport.impl.BatchImporter#importBatch(String, NodeRef, Batch, boolean, boolean)
      */
     @Override
-    public final void importBatch(final Scanner scanner,
-                                  final String  userId,
+    public final void importBatch(final String  userId,
                                   final NodeRef target,
                                   final Batch   batch,
                                   final boolean replaceExisting,
                                   final boolean dryRun)
-        throws InterruptedException
+        throws InterruptedException,
+               OutOfOrderBatchException
     {
         long start = System.nanoTime();
         
@@ -126,7 +127,7 @@ public final class BatchImporterImpl
             public Object doWork()
                 throws Exception
             {
-                importBatchInTxn(scanner, target, batch, replaceExisting, dryRun);
+                importBatchInTxn(target, batch, replaceExisting, dryRun);
                 return(null);
             }
         }, userId);
@@ -139,43 +140,32 @@ public final class BatchImporterImpl
     }
 
     
-    private final void importBatchInTxn(final Scanner scanner,
-                                        final NodeRef target,
+    private final void importBatchInTxn(final NodeRef target,
                                         final Batch   batch,
                                         final boolean replaceExisting,
                                         final boolean dryRun)
-        throws InterruptedException
+        throws InterruptedException,
+               OutOfOrderBatchException
     {
         RetryingTransactionHelper txnHelper = serviceRegistry.getRetryingTransactionHelper();
 
-        try
+        txnHelper.doInTransaction(new RetryingTransactionCallback<Object>()
         {
-            txnHelper.doInTransaction(new RetryingTransactionCallback<Object>()
+            @Override
+            public Object execute()
+                throws Exception
             {
-                @Override
-                public Object execute()
-                    throws Exception
-                {
-                    // Disable the auditable aspect's behaviours for this transaction, to allow creation & modification dates to be set
-                    behaviourFilter.disableBehaviour(ContentModel.ASPECT_AUDITABLE);
-                    
-                    importBatchImpl(target, batch, replaceExisting, dryRun);
-                    return(null);
-                }
-            },
-            false,   // read only flag, false=R/W txn
-            false);  // requires new txn flag, false=does not require a new txn if one is already in progress (which should never be the case here)
+                // Disable the auditable aspect's behaviours for this transaction, to allow creation & modification dates to be set
+                behaviourFilter.disableBehaviour(ContentModel.ASPECT_AUDITABLE);
+                
+                importBatchImpl(target, batch, replaceExisting, dryRun);
+                return(null);
+            }
+        },
+        false,   // read only flag, false=R/W txn
+        false);  // requires new txn flag, false=does not require a new txn if one is already in progress (which should never be the case here)
 
-            importStatus.batchCompleted(batch);
-        }
-        catch (final OutOfOrderBatchException ooobe)
-        {
-            if (warn(log)) warn(log,  "Batch #" + batch.getNumber() + " was out-of-order - parent " + ooobe.getMissingParentPath() + " doesn't exist. Rolling back and requeuing.");
-            
-            // Requeue the batch and swallow the exception
-            importStatus.incrementTargetCounter(BulkImportStatus.TARGET_COUNTER_OUT_OF_ORDER_RETRIES);
-            scanner.submitBatch(batch);
-        }
+        importStatus.batchCompleted(batch);
     }
     
     
@@ -189,7 +179,7 @@ public final class BatchImporterImpl
         {
             for (final BulkImportItem<BulkImportItemVersion> item : batch)
             {
-                if (Thread.currentThread().isInterrupted()) throw new InterruptedException(Thread.currentThread().getName() + " was interrupted. Terminating early.");
+                if (importStatus.isStopping() || Thread.currentThread().isInterrupted()) throw new InterruptedException(Thread.currentThread().getName() + " was interrupted. Terminating early.");
                 
                 importItem(target, item, replaceExisting, dryRun);
             }
@@ -197,10 +187,10 @@ public final class BatchImporterImpl
     }
     
     
-    private final void importItem(final NodeRef                 target,
+    private final void importItem(final NodeRef                               target,
                                   final BulkImportItem<BulkImportItemVersion> item,
-                                  final boolean                 replaceExisting,
-                                  final boolean                 dryRun)
+                                  final boolean                               replaceExisting,
+                                  final boolean                               dryRun)
         throws InterruptedException
     {
         try
@@ -225,9 +215,13 @@ public final class BatchImporterImpl
             
             if (trace(log)) trace(log, "Finished importing " + String.valueOf(item));
         }
+        catch (final InterruptedException ie)
+        {
+            Thread.currentThread().interrupt();            
+            throw ie;
+        }
         catch (final OutOfOrderBatchException oobe)
         {
-            // Fix issue #40 - https://github.com/pmonks/alfresco-bulk-import/issues/40
             throw oobe;
         }
         catch (final Exception e)
@@ -291,7 +285,7 @@ public final class BatchImporterImpl
             else
             {
                 if (trace(log)) trace(log, "Creating new node of type '" + String.valueOf(itemTypeQName) + "' with qname '" + String.valueOf(nodeQName) + "' within node '" + String.valueOf(parentNodeRef) + "' with parent association '" + String.valueOf(parentAssocQName) + "'.");
-                Map<QName, Serializable> props = new HashMap<QName, Serializable>();
+                Map<QName, Serializable> props = new HashMap<>();
                 props.put(ContentModel.PROP_NAME, nodeName);
                 result = nodeService.createNode(parentNodeRef, parentAssocQName, nodeQName, itemTypeQName, props).getChildRef();
             }
@@ -348,9 +342,9 @@ public final class BatchImporterImpl
     
     
 
-    private final void importDirectory(final NodeRef                 nodeRef,
+    private final void importDirectory(final NodeRef                               nodeRef,
                                        final BulkImportItem<BulkImportItemVersion> item,
-                                       final boolean                 dryRun)
+                                       final boolean                               dryRun)
         throws InterruptedException
     {
         if (item.getVersions() != null &&
@@ -380,9 +374,9 @@ public final class BatchImporterImpl
     }
 
 
-    private final void importFile(final NodeRef                 nodeRef,
+    private final void importFile(final NodeRef                               nodeRef,
                                   final BulkImportItem<BulkImportItemVersion> item,
-                                  final boolean                 dryRun)
+                                  final boolean                               dryRun)
         throws InterruptedException
     {
         final int numberOfVersions = item.getVersions().size();
@@ -412,7 +406,7 @@ public final class BatchImporterImpl
         
             for (final BulkImportItemVersion version : item.getVersions())
             {
-                if (Thread.currentThread().isInterrupted()) throw new InterruptedException(Thread.currentThread().getName() + " was interrupted. Terminating early.");
+                if (importStatus.isStopping() || Thread.currentThread().isInterrupted()) throw new InterruptedException(Thread.currentThread().getName() + " was interrupted. Terminating early.");
                 
                 importVersion(nodeRef, previousVersion, version, dryRun, false);
                 previousVersion = version;
@@ -423,14 +417,14 @@ public final class BatchImporterImpl
     }
     
     
-    private final void importVersion(final NodeRef nodeRef,
+    private final void importVersion(final NodeRef               nodeRef,
                                      final BulkImportItemVersion previousVersion,
                                      final BulkImportItemVersion version,
-                                     final boolean dryRun,
-                                     final boolean onlyOneVersion)
+                                     final boolean               dryRun,
+                                     final boolean               onlyOneVersion)
         throws InterruptedException
     {
-        Map<String, Serializable> versionProperties = new HashMap<String, Serializable>();
+        Map<String, Serializable> versionProperties = new HashMap<>();
         boolean                   isMajor           = true;
         
         if (version == null)
@@ -451,8 +445,13 @@ public final class BatchImporterImpl
         // In other words, we can't use the source's version label as the version label in Alfresco.  :-(
         // See: https://github.com/pmonks/alfresco-bulk-import/issues/13
 //        versionProperties.put(ContentModel.PROP_VERSION_LABEL.toString(), String.valueOf(version.getVersionNumber().toString()));
-        
+
         versionProperties.put(VersionModel.PROP_VERSION_TYPE, isMajor ? VersionType.MAJOR : VersionType.MINOR);
+
+        if (version.getVersionComment() != null)
+        {
+            versionProperties.put(Version.PROP_DESCRIPTION, version.getVersionComment());
+        }
         
         if (dryRun)
         {
@@ -474,9 +473,9 @@ public final class BatchImporterImpl
     }
     
     
-    private final void importVersionContentAndMetadata(final NodeRef nodeRef,
+    private final void importVersionContentAndMetadata(final NodeRef               nodeRef,
                                                        final BulkImportItemVersion version,
-                                                       final boolean dryRun)
+                                                       final boolean               dryRun)
         throws InterruptedException
     {
         if (version.hasMetadata())
@@ -491,9 +490,9 @@ public final class BatchImporterImpl
     }
     
     
-    private final void importVersionMetadata(final NodeRef nodeRef,
+    private final void importVersionMetadata(final NodeRef               nodeRef,
                                              final BulkImportItemVersion version,
-                                             final boolean dryRun)
+                                             final boolean               dryRun)
         throws InterruptedException
     {
         String                    type     = version.getType();
@@ -517,7 +516,7 @@ public final class BatchImporterImpl
         {
             for (final String aspect : aspects)
             {
-                if (Thread.currentThread().isInterrupted()) throw new InterruptedException(Thread.currentThread().getName() + " was interrupted. Terminating early.");
+                if (importStatus.isStopping() || Thread.currentThread().isInterrupted()) throw new InterruptedException(Thread.currentThread().getName() + " was interrupted. Terminating early.");
 
                 if (dryRun)
                 {
@@ -537,11 +536,11 @@ public final class BatchImporterImpl
 
             
             // QName all the keys.  It's baffling that NodeService doesn't have a method that accepts a Map<String, Serializable>, when things like VersionService do...
-            Map<QName, Serializable> qNamedMetadata = new HashMap<QName, Serializable>(metadata.size());
+            Map<QName, Serializable> qNamedMetadata = new HashMap<>(metadata.size());
             
             for (final String key : metadata.keySet())
             {
-                if (Thread.currentThread().isInterrupted()) throw new InterruptedException(Thread.currentThread().getName() + " was interrupted. Terminating early.");
+                if (importStatus.isStopping() || Thread.currentThread().isInterrupted()) throw new InterruptedException(Thread.currentThread().getName() + " was interrupted. Terminating early.");
                 
                 QName        keyQName = createQName(serviceRegistry, key);
                 Serializable value    = metadata.get(key);
@@ -583,9 +582,9 @@ public final class BatchImporterImpl
     }
     
 
-    private final void importVersionContent(final NodeRef nodeRef,
+    private final void importVersionContent(final NodeRef               nodeRef,
                                             final BulkImportItemVersion version,
-                                            final boolean dryRun)
+                                            final boolean               dryRun)
         throws InterruptedException
     {
         if (version.hasContent())
@@ -634,6 +633,5 @@ public final class BatchImporterImpl
             }
         }
     }
-    
     
 }

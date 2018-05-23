@@ -1,20 +1,20 @@
 /*
- * Copyright (C) 2007-2015 Peter Monks.
+ * Copyright (C) 2007 Peter Monks
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *     http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- * 
+ *
  * This file is part of an unsupported extension to Alfresco.
- * 
+ *
  */
 
 package org.alfresco.extension.bulkimport.source.fs;
@@ -40,7 +40,7 @@ import org.alfresco.service.ServiceRegistry;
 import org.alfresco.service.cmr.repository.ContentData;
 import org.alfresco.service.cmr.repository.ContentWriter;
 import org.alfresco.service.cmr.repository.MimetypeService;
-
+import org.alfresco.service.namespace.NamespaceService;
 import org.alfresco.extension.bulkimport.source.AbstractBulkImportItemVersion;
 import org.alfresco.extension.bulkimport.source.fs.MetadataLoader.Metadata;
 
@@ -57,20 +57,21 @@ public final class FilesystemBulkImportItemVersion
 {
     @SuppressWarnings("unused")
     private final static Log log = LogFactory.getLog(FilesystemBulkImportItemVersion.class);
-    
-    private final MimetypeService mimeTypeService;
-    private final ContentStore    configuredContentStore;
-    private final MetadataLoader  metadataLoader;
-    
+
+    private final MimetypeService  mimeTypeService;
+    private final NamespaceService namespaceService;
+    private final ContentStore     configuredContentStore;
+    private final MetadataLoader   metadataLoader;
+
 
     // Cached file info (to avoid repeated calls to stat syscall on the same file)
     private final boolean isDirectory;
     private final long    cachedSizeInBytes;
-    
+
     private Metadata cachedMetadata   = null;
     private boolean  contentIsInPlace = false;
 
-    
+
     public FilesystemBulkImportItemVersion(final ServiceRegistry serviceRegistry,
                                            final ContentStore    configuredContentStore,
                                            final MetadataLoader  metadataLoader,
@@ -84,8 +85,9 @@ public final class FilesystemBulkImportItemVersion
                             ContentModel.TYPE_FOLDER.toPrefixString(serviceRegistry.getNamespaceService()),
                             ContentModel.TYPE_CONTENT.toPrefixString(serviceRegistry.getNamespaceService())),
               versionNumber);
-        
+
         this.mimeTypeService        = serviceRegistry.getMimetypeService();
+        this.namespaceService       = serviceRegistry.getNamespaceService();
         this.configuredContentStore = configuredContentStore;
         this.metadataLoader         = metadataLoader;
         this.contentReference       = contentFile;
@@ -93,7 +95,7 @@ public final class FilesystemBulkImportItemVersion
 
         // "stat" the content file then cache the results
         this.isDirectory = serviceRegistry.getDictionaryService().isSubClass(createQName(serviceRegistry, getType()), ContentModel.TYPE_FOLDER);
-                
+
         if (contentFile == null || contentFile.isDirectory())
         {
             cachedSizeInBytes = 0L;
@@ -103,17 +105,27 @@ public final class FilesystemBulkImportItemVersion
             cachedSizeInBytes = contentFile.length();
         }
     }
-    
+
     public File getContentFile()
     {
         return(contentReference);
     }
-    
+
     public boolean isDirectory()
     {
         return(isDirectory);
     }
-    
+
+    /**
+     * @see org.alfresco.extension.bulkimport.source.BulkImportItemVersion#getVersionComment()
+     */
+    @Override
+    public String getVersionComment()
+    {
+        loadMetadataIfNecessary();
+        return(cachedMetadata.getVersionComment());
+    }
+
     /**
      * @see org.alfresco.extension.bulkimport.source.BulkImportItemVersion#getAspects()
      */
@@ -134,7 +146,7 @@ public final class FilesystemBulkImportItemVersion
         return(cachedMetadata.getProperties() != null &&
                cachedMetadata.getProperties().size() > 0);
     }
-    
+
     /**
      * @see org.alfresco.extension.bulkimport.source.BulkImportItemVersion#getMetadata()
      */
@@ -180,7 +192,7 @@ public final class FilesystemBulkImportItemVersion
     {
         return(cachedSizeInBytes);
     }
-    
+
     /**
      * @see org.alfresco.extension.bulkimport.source.BulkImportItemVersion#contentIsInPlace()
      */
@@ -201,8 +213,8 @@ public final class FilesystemBulkImportItemVersion
         writer.putContent(contentReference);
         writer.guessEncoding();
     }
-    
-    
+
+
     private final static String calculateType(final MetadataLoader metadataLoader,
                                               final File           contentFile,
                                               final File           metadataFile,
@@ -211,9 +223,9 @@ public final class FilesystemBulkImportItemVersion
     {
         String result = null;
         final Metadata metadata = metadataLoader.loadMetadata(metadataFile);
-        
+
         result = metadata.getType();
-        
+
         if (result == null)
         {
             if (contentFile != null)
@@ -226,47 +238,47 @@ public final class FilesystemBulkImportItemVersion
                 result = typeFile;
             }
         }
-        
+
         return(result);
     }
-    
+
     private final synchronized void loadMetadataIfNecessary()
     {
         if (cachedMetadata == null)
         {
             cachedMetadata   = metadataLoader.loadMetadata(metadataReference);
             contentIsInPlace = false;
-            
+
             if (contentReference != null)
             {
                 try
                 {
                     final Path                path       = contentReference.toPath();
                     final BasicFileAttributes attributes = Files.readAttributes(path, BasicFileAttributes.class);
-                    
+
                     // If not set in the metadata file, set the creation timestamp to what's on disk
                     if (!cachedMetadata.getProperties().containsKey(ContentModel.PROP_CREATED.toString()) &&
-                        !cachedMetadata.getProperties().containsKey(ContentModel.PROP_CREATED.toPrefixString()) &&
+                        !cachedMetadata.getProperties().containsKey(ContentModel.PROP_CREATED.toPrefixString(namespaceService)) &&
                         attributes.creationTime() != null)
                     {
                         final Date created = new Date(attributes.creationTime().toMillis());
                         cachedMetadata.addProperty(ContentModel.PROP_CREATED.toString(), created);
                     }
-                    
+
                     // If not set in the metadata file, set the modification timestamp to what's on disk
                     if (!cachedMetadata.getProperties().containsKey(ContentModel.PROP_MODIFIED.toString()) &&
-                        !cachedMetadata.getProperties().containsKey(ContentModel.PROP_MODIFIED.toPrefixString()) &&
+                        !cachedMetadata.getProperties().containsKey(ContentModel.PROP_MODIFIED.toPrefixString(namespaceService)) &&
                         attributes.lastModifiedTime() != null)
                     {
                         final Date modified = new Date(attributes.lastModifiedTime().toMillis());
                         cachedMetadata.addProperty(ContentModel.PROP_MODIFIED.toString(), modified);
                     }
-                    
+
                     // If an in-place import is possible, attempt to construct a content URL
                     if (!contentReference.isDirectory() && isInContentStore(configuredContentStore, contentReference))
                     {
                         final ContentData contentData = buildContentProperty(mimeTypeService, configuredContentStore, contentReference);
-                        
+
                         if (contentData != null)
                         {
                             // We have valid in-place content

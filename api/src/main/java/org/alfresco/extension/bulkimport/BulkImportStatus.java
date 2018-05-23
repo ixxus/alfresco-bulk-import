@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007-2015 Peter Monks.
+ * Copyright (C) 2007 Peter Monks
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -43,8 +43,7 @@ public interface BulkImportStatus
     public final static String TARGET_COUNTER_ASPECTS_ASSOCIATED           = "Aspects associated";
     public final static String TARGET_COUNTER_METADATA_PROPERTIES_IMPORTED = "Metadata properties imported";
     public final static String TARGET_COUNTER_NODES_SKIPPED                = "Nodes skipped";
-    public final static String TARGET_COUNTER_OUT_OF_ORDER_RETRIES         = "Out-of-order retries";
-    
+
     
     public final static String[] DEFAULT_TARGET_COUNTERS = { TARGET_COUNTER_BATCHES_SUBMITTED,
                                                              TARGET_COUNTER_BATCHES_COMPLETE,
@@ -55,8 +54,7 @@ public interface BulkImportStatus
                                                              TARGET_COUNTER_VERSIONS_IMPORTED,
                                                              TARGET_COUNTER_ASPECTS_ASSOCIATED,
                                                              TARGET_COUNTER_METADATA_PROPERTIES_IMPORTED,
-                                                             TARGET_COUNTER_NODES_SKIPPED,
-                                                             TARGET_COUNTER_OUT_OF_ORDER_RETRIES };
+                                                             TARGET_COUNTER_NODES_SKIPPED };
     
     /**
      * @return The userId of the person who initiatied the import <i>(will be null if an import has never been run)</i>.
@@ -90,6 +88,7 @@ public interface BulkImportStatus
      * -----------       ------------
      * In progress       Scanning
      *                   !Scanning
+     *                   Paused
      *                   Stopping
      * !In progress      Never run
      *                   Succeeded
@@ -98,6 +97,7 @@ public interface BulkImportStatus
      */
     boolean inProgress();
     boolean isScanning();
+    boolean isPaused();
     boolean isStopping();
     boolean neverRun();
     boolean succeeded();
@@ -176,6 +176,16 @@ public interface BulkImportStatus
      * @return The batch weight used for the last import. Result is undefined if <code>neverRun()</code> is true.
      */
     long getBatchWeight();
+
+    /**
+     * @return The number of queued batches, waiting for an available worker thread (0 if an import isn't in progress, or if the multi-threaded phase hasn't been reached).
+     */
+    int getQueueSize();
+
+    /**
+     * @return The maximum number of queued batches allowed.
+     */
+    int getQueueCapacity();
 
     /**
      * @return The number of active threads (0 if an import isn't in progress).

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2015 Peter Monks.
+ * Copyright (C) 2012 Peter Monks
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,11 +21,12 @@
  * This file contains the browser functionality used by the HTML status page.
  */
 
-//####TODO: CHANGE THIS PRIOR TO RELEASE!
 var logLevel = log.levels.DEBUG;  // See http://pimterry.github.io/loglevel/ for details
 
 // Global variables
 var statusURI;
+var pauseURI;
+var resumeURI;
 var stopURI;
 var webAppContext;
 var previousData;
@@ -45,6 +46,8 @@ log.setLevel(logLevel);
 function initStatus(alfrescoWebAppContext, alfrescoWebScriptContext)
 {
   statusURI     = alfrescoWebScriptContext + "/bulk/import/status.json";
+  pauseURI      = alfrescoWebScriptContext + "/bulk/import/pause";
+  resumeURI     = alfrescoWebScriptContext + "/bulk/import/resume";
   stopURI       = alfrescoWebScriptContext + "/bulk/import/stop";
   webAppContext = alfrescoWebAppContext;
 
@@ -75,7 +78,8 @@ function getStatusInfo()
 {
   log.debug('Retrieving import status information...');
 
-  $.getJSON(statusURI, function(data) {
+  $.getJSON(statusURI, function(data)
+  {
       try
       {
         previousData = currentData;
@@ -114,10 +118,31 @@ function getStatusInfo()
           document.getElementById("estimatedDuration").textContent = "";
           document.getElementById("detailsCurrentlyImporting").textContent = "";
 
-          toggleDivs(document.getElementById("stopImportButton"), document.getElementById("initiateAnotherImport"));
+          // Hide buttons and show initiate another import link
+          hideElement(document.getElementById("pauseImportButton"));
+          hideElement(document.getElementById("resumeImportButton"));
+          hideElement(document.getElementById("stopImportButton"));
+          showElement(document.getElementById("initiateAnotherImport", false));
         }
-        else  // We're not idle, so update the duration in the current status
+        else  // We're not idle, so update stuff
         {
+          // Check if we've just been paused or resumed
+          if (currentData.paused != previousData.paused)
+          {
+            if (currentData.paused)
+            {
+              favicon.stopAnimate();
+              nodesPerSecondChart.stop();
+              bytesPerSecondChart.stop();
+            }
+            else
+            {
+              startSpinner();
+              nodesPerSecondChart.start();
+              bytesPerSecondChart.start();
+            }
+          }
+
           if (currentData.estimatedRemainingDuration !== undefined)
           {
             document.getElementById("estimatedDuration").textContent = ", estimated completion in " + currentData.estimatedRemainingDuration + ".";
@@ -324,7 +349,16 @@ function refreshTextElements(cd)
     document.getElementById("detailsStatus").textContent = cd.processingState;
     document.getElementById("detailsStatus").style.color = stateToColour(cd.processingState);
 
-    // Threads
+    // Queue & threads
+    if (cd.queuedBatches === undefined)
+    {
+      document.getElementById("detailsQueueSize").textContent = "0";
+    }
+    else
+    {
+      document.getElementById("detailsQueueSize").textContent = cd.queuedBatches;
+    }
+
     if (cd.numberOfActiveThreads === undefined)
     {
       document.getElementById("detailsActiveThreads").textContent = "0";
@@ -403,6 +437,30 @@ function updateTableBody(tableBodyId, counterData)
 }
 
 
+function pauseImport()
+{
+  var pauseImportButton  = $("#pauseImportButton")[0];
+  var resumeImportButton = $("#resumeImportButton")[0];
+
+  hideElement(pauseImportButton);
+  showElement(resumeImportButton, true);
+
+  $.post(pauseURI).fail(function() { log.error("Error when calling " + pauseURI + "."); });
+}
+
+
+function resumeImport()
+{
+  var pauseImportButton  = $("#pauseImportButton")[0];
+  var resumeImportButton = $("#resumeImportButton")[0];
+
+  showElement(pauseImportButton, true);
+  hideElement(resumeImportButton);
+
+  $.post(resumeURI).fail(function() { log.error("Error when calling " + resumeURI + "."); });
+}
+
+
 function stopImport()
 {
   var stopImportButton = $("#stopImportButton");
@@ -441,8 +499,20 @@ function roundToDigits(number, numberOfDigits)
 }
 
 
-function toggleDivs(elementToHide, elementToShow)
+function hideElement(element)
 {
-  elementToHide.style.display = "none";
-  elementToShow.style.display = "block";
+  element.style.display = "none";
+}
+
+
+function showElement(element, inline)
+{
+  if (inline)
+  {
+    element.style.display = "inline";
+  }
+  else
+  {
+    element.style.display = "inline-block";
+  }
 }

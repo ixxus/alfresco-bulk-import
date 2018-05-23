@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007-2015 Peter Monks.
+ * Copyright (C) 2007 Peter Monks
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -34,17 +34,21 @@ import java.util.Map;
 public abstract class AbstractBulkImportSource
     implements BulkImportSource
 {
+    protected final BulkImportSourceStatus importStatus;
+    
     private final String   name;
     private final String   description;
     private final String   configWebScriptUri;
     private final String[] counterNames;
     
     
-    protected AbstractBulkImportSource(final String   name,
-                                       final String   description,
-                                       final String   configWebScriptUri,
-                                       final String[] counterNames)
+    protected AbstractBulkImportSource(final BulkImportSourceStatus importStatus,
+                                       final String                 name,
+                                       final String                 description,
+                                       final String                 configWebScriptUri,
+                                       final String[]               counterNames)
     {
+        this.importStatus       = importStatus;
         this.name               = name;
         this.description        = description;
         this.configWebScriptUri = configWebScriptUri;
