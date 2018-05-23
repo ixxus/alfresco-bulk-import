@@ -80,7 +80,7 @@ public final class DirectoryAnalyser
         assert serviceRegistry        != null : "serviceRegistry must not be null.";
         assert configuredContentStore != null : "configuredContentStore must not be null.";
         assert metadataLoader         != null : "metadataLoader must not be null.";
-        assert importStatus           != null : "importStatus must not be null.";
+        // assert importStatus           != null : "importStatus must not be null.";
         
         // Body
         this.serviceRegistry        = serviceRegistry;
