@@ -120,7 +120,7 @@
     <module>api</module>
     <module>amp</module>
 <!-- Awaiting fix for https://github.com/Alfresco/alfresco-sdk/issues/305... -->
-    <module>contrib/sources/sample-source</module>
+<!--<module>contrib/sources/sample-source</module>-->
   </modules>
 
 </project>
